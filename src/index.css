@@ -1,0 +1,84 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@layer base {
+  :root {
+    --color-surface: #faf9fe;
+    --color-surface-dim: #dad9df;
+    --color-surface-bright: #faf9fe;
+    --color-surface-container-lowest: #ffffff;
+    --color-surface-container-low: #f4f3f8;
+    --color-surface-container: #eeedf3;
+    --color-surface-container-high: #e9e7ed;
+    --color-surface-container-highest: #e3e2e7;
+    --color-on-surface: #1a1b1f;
+    --color-on-surface-variant: #414755;
+    --color-outline: #717786;
+    --color-outline-variant: #c1c6d7;
+    --color-primary: #0058bc;
+    --color-primary-container: #0070eb;
+    --color-secondary-container: #fe9400;
+    --color-tertiary: #006b27;
+    --color-tertiary-container: #008733;
+    --color-error: #ba1a1a;
+  }
+
+  .dark {
+    --color-surface: #0e0f12;
+    --color-surface-dim: #07080a;
+    --color-surface-bright: #1c1e24;
+    --color-surface-container-lowest: #16171d;
+    --color-surface-container-low: #1c1d24;
+    --color-surface-container: #23252e;
+    --color-surface-container-high: #2b2e39;
+    --color-surface-container-highest: #353846;
+    --color-on-surface: #f2f3f8;
+    --color-on-surface-variant: #a2a7b7;
+    --color-outline: #727787;
+    --color-outline-variant: #3a3d4a;
+    --color-primary: #3b82f6;
+    --color-primary-container: #1d4ed8;
+  }
+
+  html, body {
+    width: 100%;
+    min-height: 100%;
+    margin: 0;
+    padding: 0;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    background-color: var(--color-surface);
+    color: var(--color-on-surface);
+    -webkit-tap-highlight-color: transparent;
+    transition: background-color 0.25s ease, color 0.25s ease;
+  }
+
+  .material-symbols-outlined {
+    font-family: 'Material Symbols Outlined';
+    font-weight: normal;
+    font-style: normal;
+    font-size: 24px;
+    line-height: 1;
+    letter-spacing: normal;
+    text-transform: none;
+    display: inline-block;
+    white-space: nowrap;
+    word-wrap: normal;
+    direction: ltr;
+    -webkit-font-smoothing: antialiased;
+    font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+  }
+
+  .material-symbols-filled {
+    font-variation-settings: 'FILL' 1, 'wght' 500, 'GRAD' 0, 'opsz' 24;
+  }
+}
+
+/* Custom scrollbar hiding for native mobile app feel */
+::-webkit-scrollbar {
+  display: none;
+}
+* {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
