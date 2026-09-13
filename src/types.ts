@@ -90,6 +90,20 @@ export interface MaintenanceState {
   workshopExpenses: WorkshopExpense[];
 }
 
+export interface UserLocation {
+  lat: number;
+  lng: number;
+  address?: string;
+  city?: string;
+  province?: string;
+  postcode?: string;
+  timestamp: number;
+  accuracy?: number;
+  source: 'gps' | 'last_known' | 'manual';
+}
+
+export type GPSStatus = 'idle' | 'loading' | 'success' | 'denied' | 'error' | 'last_known';
+
 export interface StationPriceHistoryPoint {
   month: string;
   price: number;

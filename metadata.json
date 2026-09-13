@@ -1,7 +1,7 @@
 {
   "name": "Out of Oil",
   "description": "Aplicación de telemetría de combustible, registro de repostajes, precios de gasolineras y mantenimiento de vehículos.",
-  "requestFramePermissions": ["geolocation"],
+  "requestFramePermissions": ["geolocation", "camera"],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
 

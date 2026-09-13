@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { GasStation } from '../types';
+import { GasStation, UserLocation, GPSStatus } from '../types';
 import { MAP_IMAGE_URL } from '../initialData';
 import { PriceHistoryModal } from './PriceHistoryModal';
 
@@ -8,10 +8,28 @@ interface PricesScreenProps {
   favoriteStationIds?: string[];
   onToggleFavorite?: (stationId: string) => void;
   onSelectStationToRefuel: (station: GasStation) => void;
-  onShowToast: (msg: string) => void;
+  onShowToast: (msg: string, type?: 'success' | 'info' | 'warning') => void;
+  userLocation: UserLocation;
+  gpsStatus: GPSStatus;
+  onRequestLocation: (opts?: { userInitiated?: boolean }) => Promise<UserLocation | null>;
+  isPermissionDenied: boolean;
+  isLastKnown: boolean;
+  isLoadingStations?: boolean;
+  onSetManualLocation?: (lat: number, lng: number, city: string, address?: string) => void;
 }
 
 type FilterOption = 'cheapest' | 'closest' | 'detour';
+
+const POPULAR_CITIES = [
+  { name: 'Valencia', lat: 39.4699, lng: -0.3763 },
+  { name: 'Madrid', lat: 40.4168, lng: -3.7038 },
+  { name: 'Barcelona', lat: 41.3879, lng: 2.1699 },
+  { name: 'Sevilla', lat: 37.3891, lng: -5.9845 },
+  { name: 'Zaragoza', lat: 41.6488, lng: -0.8891 },
+  { name: 'Málaga', lat: 36.7213, lng: -4.4214 },
+  { name: 'Bilbao', lat: 43.2630, lng: -2.9350 },
+  { name: 'Alicante', lat: 38.3452, lng: -0.4810 },
+];
 
 export const PricesScreen: React.FC<PricesScreenProps> = ({
   stations,
@@ -19,11 +37,19 @@ export const PricesScreen: React.FC<PricesScreenProps> = ({
   onToggleFavorite,
   onSelectStationToRefuel,
   onShowToast,
+  userLocation,
+  gpsStatus,
+  onRequestLocation,
+  isPermissionDenied,
+  isLastKnown,
+  isLoadingStations = false,
+  onSetManualLocation,
 }) => {
   const [filter, setFilter] = useState<FilterOption>('cheapest');
   const [searchQuery, setSearchQuery] = useState('');
   const [fuelType, setFuelType] = useState('Diésel A (Kia Cerato 1.6)');
   const [isFuelSelectorOpen, setIsFuelSelectorOpen] = useState(false);
+  const [isCitySelectorOpen, setIsCitySelectorOpen] = useState(false);
   const [selectedStationId, setSelectedStationId] = useState<string>('station-plenoil');
   const [expandedDetailsId, setExpandedDetailsId] = useState<string | null>(null);
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
@@ -60,8 +86,14 @@ export const PricesScreen: React.FC<PricesScreenProps> = ({
     'GLP Autogás',
   ];
 
-  const handleRecenter = () => {
-    onShowToast('Mapa centrado en tu posición GPS actual (Valencia)');
+  const handleRecenter = async () => {
+    onShowToast('Obteniendo tu posición GPS...', 'info');
+    const newLoc = await onRequestLocation({ userInitiated: true });
+    if (newLoc) {
+      onShowToast(`📍 Mapa centrado en tu ubicación: ${newLoc.address || newLoc.city}`, 'success');
+    } else {
+      onShowToast(`📍 Centrado en última posición conocida: ${userLocation.address || userLocation.city || 'Ubicación guardada'}`, 'info');
+    }
   };
 
   const renderWeeklyVariation = (change: number) => {
@@ -96,6 +128,135 @@ export const PricesScreen: React.FC<PricesScreenProps> = ({
         onClose={() => setIsHistoryModalOpen(false)}
         stations={stations}
       />
+
+      {/* Real GPS Location Bar */}
+      <div className="bg-white dark:bg-[#1c1d24] rounded-2xl p-3.5 shadow-sm border border-black/[0.04] dark:border-white/[0.06] flex flex-col gap-2">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
+              gpsStatus === 'success'
+                ? 'bg-[#006b27]/10 dark:bg-[#006b27]/20 text-[#006b27] dark:text-[#34d399]'
+                : gpsStatus === 'denied'
+                ? 'bg-[#fe9400]/15 dark:bg-[#fe9400]/25 text-[#8c5000] dark:text-[#f59e0b]'
+                : 'bg-[#0058bc]/10 dark:bg-[#3b82f6]/20 text-[#0058bc] dark:text-[#60a5fa]'
+            }`}>
+              <span className="material-symbols-outlined text-[20px]">
+                {gpsStatus === 'loading' ? 'sync' : gpsStatus === 'denied' ? 'location_disabled' : 'location_on'}
+              </span>
+            </div>
+
+            <div className="flex flex-col min-w-0">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span className="text-[13px] font-bold truncate text-[#1a1b1f] dark:text-[#f2f3f8]">
+                  {userLocation.address || userLocation.city || 'Ubicación actual'}
+                </span>
+
+                {gpsStatus === 'success' ? (
+                  <span className="text-[10px] bg-[#006b27]/10 text-[#006b27] dark:text-[#34d399] px-2 py-0.5 rounded-full font-semibold flex items-center gap-1 shrink-0">
+                    <span className="w-1.5 h-1.5 rounded-full bg-[#006b27] dark:bg-[#34d399] animate-pulse" />
+                    GPS Activo
+                  </span>
+                ) : isLastKnown || gpsStatus === 'last_known' ? (
+                  <span className="text-[10px] bg-[#0058bc]/10 text-[#0058bc] dark:text-[#60a5fa] px-2 py-0.5 rounded-full font-semibold flex items-center gap-1 shrink-0">
+                    <span className="material-symbols-outlined text-[10px]">history</span>
+                    Última conocida
+                  </span>
+                ) : gpsStatus === 'denied' ? (
+                  <span className="text-[10px] bg-[#fe9400]/15 text-[#8c5000] dark:text-[#f59e0b] px-2 py-0.5 rounded-full font-semibold flex items-center gap-1 shrink-0">
+                    <span className="material-symbols-outlined text-[10px]">warning</span>
+                    Sin permiso GPS
+                  </span>
+                ) : (
+                  <span className="text-[10px] bg-black/5 dark:bg-white/10 text-[#717786] dark:text-[#a2a7b7] px-2 py-0.5 rounded-full font-semibold shrink-0">
+                    {gpsStatus === 'loading' ? 'Buscando GPS...' : 'GPS'}
+                  </span>
+                )}
+              </div>
+
+              <span className="text-[11px] text-[#717786] dark:text-[#a2a7b7] truncate">
+                {userLocation.province ? `${userLocation.city}, ${userLocation.province}` : 'Gasolineras actualizadas en tiempo real'}
+              </span>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-1.5 shrink-0">
+            <button
+              type="button"
+              onClick={() => onRequestLocation({ userInitiated: true })}
+              title="Obtener ubicación por GPS"
+              className={`p-2 rounded-xl active:scale-95 transition-all flex items-center justify-center ${
+                gpsStatus === 'loading'
+                  ? 'bg-[#0058bc]/10 text-[#0058bc] animate-spin'
+                  : 'bg-[#f4f3f8] dark:bg-[#282b35] text-[#0058bc] dark:text-[#60a5fa] hover:bg-[#e9e7ed]'
+              }`}
+            >
+              <span className="material-symbols-outlined text-[18px]">
+                {gpsStatus === 'loading' ? 'sync' : 'near_me'}
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setIsCitySelectorOpen(!isCitySelectorOpen)}
+              className="text-[#0058bc] dark:text-[#60a5fa] text-[12px] font-semibold px-2.5 py-2 rounded-xl bg-[#f4f3f8] dark:bg-[#282b35] hover:bg-[#eeedf3] active:scale-95 transition-all flex items-center gap-1"
+            >
+              <span>Ciudad</span>
+              <span className="material-symbols-outlined text-[16px]">
+                {isCitySelectorOpen ? 'expand_less' : 'expand_more'}
+              </span>
+            </button>
+          </div>
+        </div>
+
+        {/* Quick City Selector Dropdown */}
+        {isCitySelectorOpen && (
+          <div className="pt-2 mt-1 border-t border-black/[0.04] dark:border-white/[0.06] flex flex-col gap-2 animate-in fade-in duration-150">
+            <span className="text-[11px] font-semibold text-[#717786] dark:text-[#a2a7b7]">
+              O selecciona una ciudad para ver sus gasolineras:
+            </span>
+            <div className="flex flex-wrap gap-1.5">
+              {POPULAR_CITIES.map((c) => (
+                <button
+                  key={c.name}
+                  type="button"
+                  onClick={() => {
+                    if (onSetManualLocation) {
+                      onSetManualLocation(c.lat, c.lng, c.name, `${c.name} Centro`);
+                    }
+                    setIsCitySelectorOpen(false);
+                  }}
+                  className={`text-[12px] px-2.5 py-1 rounded-full font-medium transition-all ${
+                    userLocation.city === c.name
+                      ? 'bg-[#0058bc] text-white font-bold shadow-sm'
+                      : 'bg-[#f4f3f8] dark:bg-[#282b35] text-[#1a1b1f] dark:text-[#f2f3f8] hover:bg-[#e9e7ed]'
+                  }`}
+                >
+                  {c.name}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Permission Notice Banner when GPS is denied */}
+        {gpsStatus === 'denied' && (
+          <div className="mt-1 p-2.5 bg-[#fe9400]/10 dark:bg-[#fe9400]/15 rounded-xl border border-[#fe9400]/25 flex items-center justify-between gap-2 text-[11px]">
+            <div className="flex items-center gap-2 text-[#8c5000] dark:text-[#f59e0b]">
+              <span className="material-symbols-outlined text-[16px] shrink-0">info</span>
+              <span>
+                Para ver las gasolineras en tu posición exacta, activa el acceso a la ubicación en tu navegador.
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => onRequestLocation({ userInitiated: true })}
+              className="font-bold text-[#8c5000] dark:text-[#f59e0b] bg-[#fe9400]/20 hover:bg-[#fe9400]/30 px-2.5 py-1 rounded-lg shrink-0 whitespace-nowrap"
+            >
+              Permitir GPS
+            </button>
+          </div>
+        )}
+      </div>
 
       {/* Search & Active Fuel Indicator */}
       <div className="flex flex-col gap-2.5">
@@ -253,7 +414,7 @@ export const PricesScreen: React.FC<PricesScreenProps> = ({
         <div className="absolute top-3 left-3 flex items-center gap-1.5 bg-white/90 dark:bg-[#1f2129]/90 backdrop-blur-md px-3 py-1.5 rounded-full shadow-sm border border-black/[0.03] dark:border-white/[0.05]">
           <span className="w-2 h-2 rounded-full bg-[#006b27] animate-pulse" />
           <span className="text-[11px] text-[#1a1b1f] dark:text-[#f2f3f8] font-semibold">
-            Radio 5 km • {filteredStations.length} estaciones
+            Radio 5 km • {userLocation?.city || 'Tu zona'} • {filteredStations.length} estaciones
           </span>
         </div>
 
@@ -491,8 +652,8 @@ export const PricesScreen: React.FC<PricesScreenProps> = ({
               {station.isLowestPrice ? (
                 <div className="grid grid-cols-2 gap-2 pt-0.5">
                   <a
-                    href={`https://maps.apple.com/?q=${encodeURIComponent(
-                      `${station.name} ${station.address} Valencia`
+                    href={`https://maps.apple.com/?daddr=${station.lat},${station.lng}&q=${encodeURIComponent(
+                      `${station.name} ${station.address}`
                     )}`}
                     target="_blank"
                     rel="noopener noreferrer"

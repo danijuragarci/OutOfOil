@@ -17,6 +17,8 @@ import {
   initialGasStations,
   initialTrips,
 } from './initialData';
+import { useGeolocation } from './hooks/useGeolocation';
+import { getStationsForLocation } from './services/locationService';
 import { Header } from './components/Header';
 import { BottomNav } from './components/BottomNav';
 import { DashboardScreen } from './components/DashboardScreen';
@@ -94,13 +96,6 @@ export default function App() {
     }
   });
 
-  const [gasStations] = useState<GasStation[]>(initialGasStations);
-  const [isAccountModalOpen, setIsAccountModalOpen] = useState(false);
-  const [isWorkshopModalOpen, setIsWorkshopModalOpen] = useState(false);
-  const [isInsuranceModalOpen, setIsInsuranceModalOpen] = useState(false);
-  const [isTripsModalOpen, setIsTripsModalOpen] = useState(false);
-  const [preselectedStation, setPreselectedStation] = useState<GasStation | null>(null);
-
   // Floating Toast
   const [toast, setToast] = useState<{ message: string; type?: 'success' | 'info' | 'warning' } | null>(null);
 
@@ -110,6 +105,53 @@ export default function App() {
       setToast((curr) => (curr?.message === message ? null : curr));
     }, 3500);
   };
+
+  // Geolocation and GPS state management (defaults immediately to last known location)
+  const {
+    location: userLocation,
+    status: gpsStatus,
+    errorMessage: gpsErrorMessage,
+    requestCurrentLocation,
+    setManualLocation,
+    isPermissionDenied,
+    isLastKnown,
+  } = useGeolocation(showToast);
+
+  const [gasStations, setGasStations] = useState<GasStation[]>(initialGasStations);
+  const [isLoadingStations, setIsLoadingStations] = useState(false);
+  const [isAccountModalOpen, setIsAccountModalOpen] = useState(false);
+  const [isWorkshopModalOpen, setIsWorkshopModalOpen] = useState(false);
+  const [isInsuranceModalOpen, setIsInsuranceModalOpen] = useState(false);
+  const [isTripsModalOpen, setIsTripsModalOpen] = useState(false);
+  const [preselectedStation, setPreselectedStation] = useState<GasStation | null>(null);
+
+  // Synchronize stations when userLocation updates (from live GPS, last known location, or city selection)
+  useEffect(() => {
+    let isCancelled = false;
+    setIsLoadingStations(true);
+
+    getStationsForLocation(
+      userLocation.lat,
+      userLocation.lng,
+      userLocation.postcode,
+      userLocation.city
+    )
+      .then((stations) => {
+        if (!isCancelled && stations && stations.length > 0) {
+          setGasStations(stations);
+        }
+      })
+      .catch((err) => {
+        console.warn('Error fetching stations for location:', err);
+      })
+      .finally(() => {
+        if (!isCancelled) setIsLoadingStations(false);
+      });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [userLocation.lat, userLocation.lng, userLocation.postcode, userLocation.city]);
 
   // Sync theme mode to DOM root element
   useEffect(() => {
@@ -410,6 +452,11 @@ export default function App() {
             onAddRefuel={handleAddRefuel}
             preselectedStation={preselectedStation}
             onClearPreselectedStation={() => setPreselectedStation(null)}
+            userLocation={userLocation}
+            gpsStatus={gpsStatus}
+            onRequestLocation={requestCurrentLocation}
+            isLastKnown={isLastKnown}
+            nearbyStations={gasStations}
           />
         )}
 
@@ -419,7 +466,14 @@ export default function App() {
             favoriteStationIds={favoriteStationIds}
             onToggleFavorite={handleToggleFavoriteStation}
             onSelectStationToRefuel={handleSelectStationToRefuel}
-            onShowToast={(msg) => showToast(msg, 'info')}
+            onShowToast={(msg, type) => showToast(msg, type || 'info')}
+            userLocation={userLocation}
+            gpsStatus={gpsStatus}
+            onRequestLocation={requestCurrentLocation}
+            isPermissionDenied={isPermissionDenied}
+            isLastKnown={isLastKnown}
+            isLoadingStations={isLoadingStations}
+            onSetManualLocation={setManualLocation}
           />
         )}
 

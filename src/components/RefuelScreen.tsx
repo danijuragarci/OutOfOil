@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { RefuelRecord, VehicleInfo, GasStation } from '../types';
+import { RefuelRecord, VehicleInfo, GasStation, UserLocation, GPSStatus } from '../types';
 
 interface RefuelScreenProps {
   vehicle: VehicleInfo;
@@ -7,6 +7,11 @@ interface RefuelScreenProps {
   onAddRefuel: (newRefuel: RefuelRecord) => void;
   preselectedStation?: GasStation | null;
   onClearPreselectedStation?: () => void;
+  userLocation?: UserLocation;
+  gpsStatus?: GPSStatus;
+  onRequestLocation?: (opts?: { userInitiated?: boolean }) => Promise<UserLocation | null>;
+  isLastKnown?: boolean;
+  nearbyStations?: GasStation[];
 }
 
 export const RefuelScreen: React.FC<RefuelScreenProps> = ({
@@ -15,27 +20,40 @@ export const RefuelScreen: React.FC<RefuelScreenProps> = ({
   onAddRefuel,
   preselectedStation,
   onClearPreselectedStation,
+  userLocation,
+  gpsStatus = 'idle',
+  onRequestLocation,
+  isLastKnown = false,
+  nearbyStations = [],
 }) => {
   // Current values
   const lastOdometer = vehicle.totalOdometer;
   const [odometer, setOdometer] = useState<number>(lastOdometer + 420);
   const [liters, setLiters] = useState<number>(42.5);
   const [pricePerLiter, setPricePerLiter] = useState<number>(
-    preselectedStation?.pricePerLiter ?? 1.490
+    preselectedStation?.pricePerLiter ?? (nearbyStations[0]?.pricePerLiter ?? 1.419)
   );
   const [totalPrice, setTotalPrice] = useState<number>(
-    Number((42.5 * (preselectedStation?.pricePerLiter ?? 1.490)).toFixed(2))
+    Number((42.5 * (preselectedStation?.pricePerLiter ?? (nearbyStations[0]?.pricePerLiter ?? 1.419))).toFixed(2))
   );
   const [isFullTank, setIsFullTank] = useState<boolean>(true);
   const [selectedChip, setSelectedChip] = useState<string>('Lleno');
 
   // Station info
+  const initialStation = preselectedStation || nearbyStations[0];
   const [stationName, setStationName] = useState<string>(
-    preselectedStation ? `${preselectedStation.name} • ${preselectedStation.address}` : 'Repsol • A-7 km 14'
+    initialStation
+      ? `${initialStation.name} • ${initialStation.address}`
+      : userLocation?.city
+      ? `Estación de Servicio • ${userLocation.city}`
+      : 'Repsol • A-7 km 14'
   );
   const [stationSubtitle, setStationSubtitle] = useState<string>(
-    preselectedStation ? `${preselectedStation.distanceKm} km • ${preselectedStation.detourText}` : 'Autovía del Mediterráneo (Dir. Castellón)'
+    initialStation
+      ? `${initialStation.distanceKm} km • ${initialStation.detourText}`
+      : 'Cercana a tu ubicación'
   );
+  const [customStationInput, setCustomStationInput] = useState<string>('');
   const [isChangingStation, setIsChangingStation] = useState<boolean>(false);
   const [isHistoryExpanded, setIsHistoryExpanded] = useState<boolean>(true);
   const [isSaving, setIsSaving] = useState<boolean>(false);
@@ -55,6 +73,17 @@ export const RefuelScreen: React.FC<RefuelScreenProps> = ({
       setTotalPrice(Number((liters * preselectedStation.pricePerLiter).toFixed(2)));
     }
   }, [preselectedStation]);
+
+  // When nearbyStations update from GPS and no station was manually chosen
+  useEffect(() => {
+    if (!preselectedStation && nearbyStations.length > 0) {
+      const closest = nearbyStations[0];
+      setStationName(`${closest.name} • ${closest.address}`);
+      setStationSubtitle(`${closest.distanceKm} km • ${closest.detourText}`);
+      setPricePerLiter(closest.pricePerLiter);
+      setTotalPrice(Number((liters * closest.pricePerLiter).toFixed(2)));
+    }
+  }, [nearbyStations]);
 
   // Recalculations
   const tripKm = Math.max(0, odometer - lastOdometer);
@@ -238,38 +267,113 @@ export const RefuelScreen: React.FC<RefuelScreenProps> = ({
       </div>
 
       {/* Smart GPS Gas Station Detection Banner */}
-      <div className="w-full bg-white dark:bg-[#1c1d24] rounded-2xl p-3.5 shadow-sm flex flex-col gap-2 border border-black/[0.03] dark:border-white/[0.05]">
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="w-10 h-10 rounded-xl bg-[#0058bc]/10 dark:bg-[#3b82f6]/20 text-[#0058bc] dark:text-[#60a5fa] flex items-center justify-center shrink-0">
+      <div className="w-full bg-white dark:bg-[#1c1d24] rounded-2xl p-3.5 shadow-sm flex flex-col gap-2.5 border border-black/[0.03] dark:border-white/[0.05]">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-start gap-3 min-w-0">
+            <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+              gpsStatus === 'success'
+                ? 'bg-[#006b27]/10 dark:bg-[#006b27]/20 text-[#006b27] dark:text-[#34d399]'
+                : gpsStatus === 'denied'
+                ? 'bg-[#fe9400]/15 dark:bg-[#fe9400]/25 text-[#8c5000] dark:text-[#f59e0b]'
+                : 'bg-[#0058bc]/10 dark:bg-[#3b82f6]/20 text-[#0058bc] dark:text-[#60a5fa]'
+            }`}>
               <span className="material-symbols-outlined text-[22px]">
-                share_location
+                {gpsStatus === 'loading' ? 'sync' : gpsStatus === 'denied' ? 'location_disabled' : 'share_location'}
               </span>
             </div>
             <div className="flex flex-col min-w-0">
-              <div className="flex items-center gap-1.5">
-                <span className="text-[13px] font-semibold truncate">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span className="text-[13px] font-semibold truncate text-[#1a1b1f] dark:text-[#f2f3f8]">
                   {stationName}
                 </span>
-                <span className="text-[10px] bg-[#006b27]/10 text-[#006b27] dark:text-[#34d399] px-1.5 py-0.5 rounded-full font-semibold flex items-center gap-0.5 shrink-0">
-                  <span className="material-symbols-outlined text-[10px]">near_me</span>{' '}
-                  GPS
-                </span>
+
+                {/* GPS Status Badge */}
+                {gpsStatus === 'success' ? (
+                  <span className="text-[10px] bg-[#006b27]/10 text-[#006b27] dark:text-[#34d399] px-2 py-0.5 rounded-full font-semibold flex items-center gap-0.5 shrink-0">
+                    <span className="w-1.5 h-1.5 rounded-full bg-[#006b27] dark:bg-[#34d399] animate-pulse" />
+                    GPS Activo
+                  </span>
+                ) : isLastKnown || gpsStatus === 'last_known' ? (
+                  <span className="text-[10px] bg-[#0058bc]/10 text-[#0058bc] dark:text-[#60a5fa] px-2 py-0.5 rounded-full font-semibold flex items-center gap-0.5 shrink-0">
+                    <span className="material-symbols-outlined text-[10px]">history</span>
+                    Última conocida
+                  </span>
+                ) : gpsStatus === 'denied' ? (
+                  <span className="text-[10px] bg-[#fe9400]/15 text-[#8c5000] dark:text-[#f59e0b] px-2 py-0.5 rounded-full font-semibold flex items-center gap-0.5 shrink-0">
+                    <span className="material-symbols-outlined text-[10px]">warning</span>
+                    Sin permiso GPS
+                  </span>
+                ) : (
+                  <span className="text-[10px] bg-black/5 dark:bg-white/10 text-[#717786] dark:text-[#a2a7b7] px-2 py-0.5 rounded-full font-semibold shrink-0">
+                    {gpsStatus === 'loading' ? 'Buscando satélites...' : 'GPS'}
+                  </span>
+                )}
               </div>
-              <span className="text-[11px] text-[#717786] dark:text-[#a2a7b7] truncate">
+
+              <span className="text-[11px] text-[#717786] dark:text-[#a2a7b7] truncate mt-0.5">
                 {stationSubtitle}
               </span>
+
+              {/* Current detected location indicator */}
+              {userLocation && (
+                <div className="flex items-center gap-1 text-[10px] text-[#414755] dark:text-[#c1c6d7] mt-1 font-medium truncate">
+                  <span className="material-symbols-outlined text-[12px] text-[#0058bc] dark:text-[#60a5fa]">
+                    location_on
+                  </span>
+                  <span className="truncate">
+                    {userLocation.address || userLocation.city || 'Ubicación actual'}
+                  </span>
+                </div>
+              )}
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={() => setIsChangingStation(!isChangingStation)}
-            className="text-[#0058bc] dark:text-[#60a5fa] text-[12px] font-semibold px-2.5 py-1.5 rounded-lg bg-[#f4f3f8] dark:bg-[#282b35] active:scale-95 transition-all shrink-0"
-          >
-            {isChangingStation ? 'Listo' : 'Cambiar'}
-          </button>
+          <div className="flex items-center gap-1.5 shrink-0">
+            {onRequestLocation && (
+              <button
+                type="button"
+                onClick={() => onRequestLocation({ userInitiated: true })}
+                title="Actualizar mi ubicación actual mediante GPS"
+                className={`p-1.5 rounded-lg active:scale-95 transition-all flex items-center justify-center ${
+                  gpsStatus === 'loading'
+                    ? 'bg-[#0058bc]/10 text-[#0058bc] animate-spin'
+                    : 'bg-[#f4f3f8] dark:bg-[#282b35] text-[#0058bc] dark:text-[#60a5fa] hover:bg-[#e9e7ed]'
+                }`}
+              >
+                <span className="material-symbols-outlined text-[18px]">
+                  {gpsStatus === 'loading' ? 'sync' : 'near_me'}
+                </span>
+              </button>
+            )}
+
+            <button
+              type="button"
+              onClick={() => setIsChangingStation(!isChangingStation)}
+              className="text-[#0058bc] dark:text-[#60a5fa] text-[12px] font-semibold px-2.5 py-1.5 rounded-lg bg-[#f4f3f8] dark:bg-[#282b35] active:scale-95 transition-all"
+            >
+              {isChangingStation ? 'Listo' : 'Cambiar'}
+            </button>
+          </div>
         </div>
+
+        {/* Permission Request Prompt Banner if GPS was denied */}
+        {gpsStatus === 'denied' && (
+          <div className="mt-1 p-2.5 bg-[#fe9400]/10 dark:bg-[#fe9400]/15 rounded-xl border border-[#fe9400]/25 flex items-center justify-between gap-2 text-[11px]">
+            <div className="flex items-center gap-2 text-[#8c5000] dark:text-[#f59e0b]">
+              <span className="material-symbols-outlined text-[16px] shrink-0">info</span>
+              <span>Para detectar la gasolinera automáticamente, concede permisos de ubicación a la web.</span>
+            </div>
+            {onRequestLocation && (
+              <button
+                type="button"
+                onClick={() => onRequestLocation({ userInitiated: true })}
+                className="font-bold text-[#8c5000] dark:text-[#f59e0b] bg-[#fe9400]/20 hover:bg-[#fe9400]/30 px-2.5 py-1 rounded-lg shrink-0 whitespace-nowrap"
+              >
+                Activar GPS
+              </button>
+            )}
+          </div>
+        )}
 
         {/* COMPARATIVA CON EL ÚLTIMO REPOSTAJE EN ESTA MISMA GASOLINERA */}
         <div className="mt-1 pt-2 border-t border-black/[0.04] dark:border-white/[0.06] flex items-center justify-between text-[11px]">
@@ -303,39 +407,78 @@ export const RefuelScreen: React.FC<RefuelScreenProps> = ({
         </div>
       </div>
 
-      {/* Optional Station Picker Selector when user clicks 'Cambiar' */}
+      {/* Dynamic Station Picker Selector when user clicks 'Cambiar' */}
       {isChangingStation && (
-        <div className="bg-white dark:bg-[#1c1d24] p-3 rounded-2xl shadow-sm border border-black/[0.04] dark:border-white/[0.06] flex flex-col gap-2 animate-in fade-in duration-200">
-          <span className="text-[12px] font-semibold text-[#414755] dark:text-[#c1c6d7]">
-            Seleccionar gasolinera cercana:
-          </span>
-          <div className="grid grid-cols-2 gap-2">
-            {[
-              { name: 'Repsol • A-7 km 14', sub: 'Autovía del Mediterráneo', p: 1.490 },
-              { name: 'Plenoil • Severo Ochoa', sub: 'A 1,8 km (Low Cost)', p: 1.419 },
-              { name: 'Ballenoil • Polígono Norte', sub: 'A 2,4 km', p: 1.425 },
-              { name: 'Cepsa • Ronda Norte', sub: 'A 0,9 km', p: 1.479 },
-            ].map((st) => (
+        <div className="bg-white dark:bg-[#1c1d24] p-3 rounded-2xl shadow-sm border border-black/[0.04] dark:border-white/[0.06] flex flex-col gap-2.5 animate-in fade-in duration-200">
+          <div className="flex items-center justify-between">
+            <span className="text-[12px] font-bold text-[#1a1b1f] dark:text-[#f2f3f8]">
+              Gasolineras detectadas cerca de ti:
+            </span>
+            <span className="text-[11px] text-[#717786] dark:text-[#a2a7b7]">
+              {userLocation?.city || 'Tu zona'}
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            {(nearbyStations.length > 0
+              ? nearbyStations.slice(0, 6)
+              : [
+                  { id: '1', name: 'Plenoil', address: 'Avda. Principal', distanceKm: 1.2, detourText: '~2 min de desvío', pricePerLiter: 1.419 },
+                  { id: '2', name: 'Ballenoil', address: 'Polígono Norte', distanceKm: 1.8, detourText: '~4 min de desvío', pricePerLiter: 1.425 },
+                  { id: '3', name: 'Cepsa', address: 'Ronda Norte', distanceKm: 0.9, detourText: '~2 min', pricePerLiter: 1.479 },
+                  { id: '4', name: 'Repsol', address: 'Carretera Acceso', distanceKm: 2.5, detourText: 'En ruta', pricePerLiter: 1.519 },
+                ]
+            ).map((st) => (
               <button
-                key={st.name}
+                key={st.id || st.name}
                 type="button"
                 onClick={() => {
-                  setStationName(st.name);
-                  setStationSubtitle(st.sub);
-                  setPricePerLiter(st.p);
-                  setTotalPrice(Number((liters * st.p).toFixed(2)));
+                  setStationName(`${st.name} • ${st.address}`);
+                  setStationSubtitle(`${st.distanceKm} km • ${st.detourText}`);
+                  setPricePerLiter(st.pricePerLiter);
+                  setTotalPrice(Number((liters * st.pricePerLiter).toFixed(2)));
                   setIsChangingStation(false);
                 }}
-                className="text-left p-2 rounded-xl bg-[#f4f3f8] dark:bg-[#282b35] hover:bg-[#eeedf3] dark:hover:bg-[#313542] active:scale-95 transition-all"
+                className="text-left p-2.5 rounded-xl bg-[#f4f3f8] dark:bg-[#282b35] hover:bg-[#eeedf3] dark:hover:bg-[#313542] active:scale-[0.98] transition-all flex items-center justify-between gap-2"
               >
-                <div className="text-[12px] font-bold truncate">
-                  {st.name}
+                <div className="min-w-0">
+                  <div className="text-[12px] font-bold truncate text-[#1a1b1f] dark:text-[#f2f3f8]">
+                    {st.name}
+                  </div>
+                  <div className="text-[10px] text-[#717786] dark:text-[#a2a7b7] truncate">
+                    {st.address} • {st.distanceKm} km
+                  </div>
                 </div>
-                <div className="text-[11px] text-[#006b27] dark:text-[#34d399] font-semibold">
-                  {st.p.toFixed(3).replace('.', ',')} €/L
+                <div className="text-[12px] text-[#006b27] dark:text-[#34d399] font-bold shrink-0">
+                  {st.pricePerLiter.toFixed(3).replace('.', ',')} €/L
                 </div>
               </button>
             ))}
+          </div>
+
+          {/* Custom station manual input */}
+          <div className="pt-2 border-t border-black/[0.05] dark:border-white/[0.05] flex items-center gap-2">
+            <input
+              type="text"
+              placeholder="O escribe otra gasolinera..."
+              value={customStationInput}
+              onChange={(e) => setCustomStationInput(e.target.value)}
+              className="flex-1 h-9 px-3 text-[12px] bg-[#f4f3f8] dark:bg-[#282b35] rounded-lg outline-none border border-black/[0.04] dark:border-white/[0.06]"
+            />
+            <button
+              type="button"
+              disabled={!customStationInput.trim()}
+              onClick={() => {
+                if (!customStationInput.trim()) return;
+                setStationName(customStationInput.trim());
+                setStationSubtitle('Añadida manualmente');
+                setCustomStationInput('');
+                setIsChangingStation(false);
+              }}
+              className="px-3 h-9 bg-[#0058bc] text-white text-[12px] font-bold rounded-lg disabled:opacity-50"
+            >
+              Fijar
+            </button>
           </div>
         </div>
       )}
